@@ -7,7 +7,9 @@ import (
 	"go/format"
 	"go/parser"
 	"go/token"
+	"gopkg.in/yaml.v2"
 	"io"
+	"io/ioutil"
 	"reflect"
 	"sort"
 	"strconv"
@@ -28,7 +30,7 @@ import (
 // storage engine supports the transaction. (e.g. MySQL's MyISAM engine does
 // NOT support the transaction)
 func Sync(db *sql.DB, filename string, src interface{}) error {
-	sqls, err := Diff(db, filename, src)
+	sqls, err := Diff(MapFromAST, db, filename, src)
 	if err != nil {
 		return err
 	}
@@ -45,8 +47,9 @@ func Sync(db *sql.DB, filename string, src interface{}) error {
 	return tx.Commit()
 }
 
-// Diff returns SQLs for schema synchronous between database and Go's struct.
-func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
+type StructProc func(filename string, src interface{}) (map[string][]*field, error)
+
+func MapFromAST(filename string, src interface{}) (map[string][]*field, error) {
 	structASTMap, err := makeStructASTMap(filename, src)
 	if err != nil {
 		return nil, err
@@ -69,6 +72,31 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 			}
 		}
 	}
+
+	return structMap, nil
+}
+
+func LoadYaml(filename string, _ interface{}) (map[string][]*field, error) {
+	d, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return nil, err
+	}
+
+	structMap := map[string][]*field{}
+	if err := yaml.Unmarshal(d, structMap); err != nil {
+		return nil, err
+	}
+
+	return structMap, nil
+}
+
+// Diff returns SQLs for schema synchronous between database and Go's struct.
+func Diff(proc StructProc, db *sql.DB, filename string, src interface{}) ([]string, error) {
+	structMap, err := proc(filename, src)
+	if err != nil {
+		return nil, err
+	}
+
 	tableMap, err := getTableMap(db)
 	if err != nil {
 		return nil, err

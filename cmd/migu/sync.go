@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/naoina/migu"
+	"github.com/Talos208/migu"
 )
 
 var (
@@ -20,6 +20,7 @@ type sync struct {
 
 	DryRun bool `long:"dry-run"`
 	Quiet  bool `short:"q" long:"quiet"`
+	SchemaSrc  bool `short:"s" long:"source"`
 }
 
 func (s *sync) Usage() string {
@@ -28,6 +29,7 @@ func (s *sync) Usage() string {
 Options:
       --dry-run          Print the results with no changes
   -q, --quiet            Suppress non-error messages
+  -s, --src				 Input source of schema
 %s
 With no FILE, or when FILE is -, read standard input.
 `, progName, s.GeneralOption.Usage())
@@ -68,7 +70,14 @@ func (s *sync) run(db *sql.DB, file string) error {
 		file = ""
 		src = os.Stdin
 	}
-	sqls, err := migu.Diff(db, file, src)
+	var proc StructProc
+	switch SchemaSrc {
+	case "yaml":
+		proc = FromYaml
+	default:
+		proc = MapFromAST
+	}
+	sqls, err := migu.Diff(proc, db, file, src)
 	if err != nil {
 		return err
 	}
